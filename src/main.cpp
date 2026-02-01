@@ -11,7 +11,7 @@
 #include "layers/application/bluetooth/Bluetooth.h"
 #include "layers/application/mpu/MPU.h"
 #include "layers/application/led/LED.h"
-#include "layers/application/bluetooth_led/BluetoothLed.h"
+#include "layers/application/measurement/MeasurementApp.h"
 // Network instances
 NetworkLayer *networkLayer = nullptr;
 // Data Layer instance
@@ -23,7 +23,7 @@ DataLayer *dataLayer = nullptr;
 ApplicationInterface *bluetoothApp = nullptr;
 ApplicationInterface *mpuApp = nullptr;
 ApplicationInterface *ledApp = nullptr;
-ApplicationInterface *bluetoothLedApp = nullptr;
+ApplicationInterface *measurementApp = nullptr;
 
 void setup()
 {
@@ -33,6 +33,7 @@ void setup()
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   // Init I2C for MPU6050 (will be handled by MPU application later)
   Wire.begin(14, 15); // SDA 14, SCL 15
+  Wire.setClock(400000); // Set I2C to 400kHz for maximum speed
   networkLayer = new NetworkLayer();
   if (!networkLayer || !networkLayer->init())
   {
@@ -64,13 +65,18 @@ void setup()
     bluetoothApp = nullptr;
   }
 
-  // mpuApp = new MPU(appManager.getNetworkLayer(), appManager.getDataLayer());
-  // if (!mpuApp->setup())
-  // {
-  //   Serial.println("Failed to setup MPU application");
-  //   delete mpuApp;
-  //   mpuApp = nullptr;
-  // }
+  mpuApp = new MPU();
+  mpuApp->setNetworkLayer(networkLayer)->setDataLayer(dataLayer);
+  if (!mpuApp->setup())
+  {
+    Serial.println("Failed to setup MPU application");
+    delete mpuApp;
+    mpuApp = nullptr;
+  } else {
+    // Start MPU capturing immediately for maximum speed data collection
+    static_cast<MPU*>(mpuApp)->startCapture();
+  }
+
   ledApp = new LED(2); // GPIO 2
   ledApp->setNetworkLayer(networkLayer)->setDataLayer(dataLayer);
   if (!ledApp->setup())
@@ -80,13 +86,13 @@ void setup()
     ledApp = nullptr;
   }
 
-  bluetoothLedApp = new BluetoothLed();
-  bluetoothLedApp->setNetworkLayer(networkLayer)->setDataLayer(dataLayer);
-  if (!bluetoothLedApp->setup())
+  measurementApp = new MeasurementApp();
+  measurementApp->setNetworkLayer(networkLayer)->setDataLayer(dataLayer);
+  if (!measurementApp->setup())
   {
-    Serial.println("Failed to setup Bluetooth LED application");
-    delete bluetoothLedApp;
-    bluetoothLedApp = nullptr;
+    Serial.println("Failed to setup Measurement application");
+    delete measurementApp;
+    measurementApp = nullptr;
   }
 
   Serial.println("All applications initialized");
@@ -99,7 +105,7 @@ void setup()
   }
 
   if (mpuApp) {
-    if (!mpuApp->createTask("MPUApp", 4096, 2, tskNO_AFFINITY, 10)) {  // 100Hz for sensor data collection
+    if (!mpuApp->createTask("MPUApp", 4096, 2, tskNO_AFFINITY, 20)) {  // 50Hz for stable Bluetooth operation
       Serial.println("Failed to create MPU application task");
     }
   }
@@ -110,9 +116,9 @@ void setup()
     }
   }
 
-  if (bluetoothLedApp) {
-    if (!bluetoothLedApp->createTask("BluetoothLEDApp", 4096, 3, tskNO_AFFINITY, 50)) {  // 20Hz for coordination
-      Serial.println("Failed to create Bluetooth LED application task");
+  if (measurementApp) {
+    if (!measurementApp->createTask("MeasurementApp", 8192, 1, tskNO_AFFINITY, 100)) {  // Normal priority, 10Hz for status updates
+      Serial.println("Failed to create Measurement application task");
     }
   }
 

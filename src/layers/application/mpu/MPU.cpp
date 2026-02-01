@@ -199,15 +199,20 @@ bool MPU::initMPU() {
         return false;
     }
 
-    // Set up motion detection
-    mpu_.setHighPassFilter(MPU6050_HIGHPASS_0_63_HZ);
-    mpu_.setMotionDetectionThreshold(1);
-    mpu_.setMotionDetectionDuration(20);
-    mpu_.setInterruptPinLatch(true);
-    mpu_.setInterruptPinPolarity(true);
-    mpu_.setMotionInterrupt(true);
+    // Configure for maximum speed - disable motion detection for faster readings
+    // mpu_.setHighPassFilter(MPU6050_HIGHPASS_0_63_HZ);
+    // mpu_.setMotionDetectionThreshold(1);
+    // mpu_.setMotionDetectionDuration(20);
+    // mpu_.setInterruptPinLatch(true);
+    // mpu_.setInterruptPinPolarity(true);
+    // mpu_.setMotionInterrupt(true);
 
-    Serial.println("[MPU] MPU6050 initialized successfully");
+    // Set accelerometer range for optimal performance
+    mpu_.setAccelerometerRange(MPU6050_RANGE_4_G);
+    mpu_.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu_.setFilterBandwidth(MPU6050_BAND_260_HZ);
+
+    Serial.println("[MPU] MPU6050 initialized for stable Bluetooth operation (50Hz)");
     return true;
 }
 

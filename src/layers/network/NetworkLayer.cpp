@@ -61,8 +61,8 @@ bool NetworkLayer::subscribe(const std::string& topic, const std::string& appNam
     // Get count directly without calling getSubscriberCount() to avoid nested mutex lock
     size_t count = subscribers_[topic].size();
 
-    Serial.printf("[NetworkLayer] %s subscribed to %s (total: %d)\n",
-                  appName.c_str(), topic.c_str(), count);
+    // Serial.printf("[NetworkLayer] %s subscribed to %s (total: %d)\n",
+    //               appName.c_str(), topic.c_str(), count);
 
     xSemaphoreGive(subscribersMutex_);
     return true;
@@ -93,7 +93,7 @@ bool NetworkLayer::unsubscribe(const std::string& topic, const std::string& appN
             subscribers_.erase(topicIt);
         }
 
-        Serial.printf("[NetworkLayer] %s unsubscribed from %s\n", appName.c_str(), topic.c_str());
+        // Serial.printf("[NetworkLayer] %s unsubscribed from %s\n", appName.c_str(), topic.c_str());
     }
 
     xSemaphoreGive(subscribersMutex_);
@@ -110,22 +110,38 @@ bool NetworkLayer::publish(const std::string& topic, const uint8_t* data, size_t
         return false;
     }
 
+    // Debug: Show what we're publishing
+    if (topic == "bluetooth/command") {
+        Serial.printf("[NetworkLayer] Publishing to %s: ", topic.c_str());
+        for (size_t i = 0; i < len && i < 10; i++) {
+            Serial.printf("%02X ", data[i]);
+        }
+        Serial.printf("(%d bytes)\n", len);
+    }
+
+    // Copy data to heap so it remains valid for the delivery task
+    uint8_t* dataCopy = new uint8_t[len];
+    memcpy(dataCopy, data, len);
+
     // Deliver message to all subscribers asynchronously with rtos
     xTaskCreate(
         [](void* param) {
-            auto* args = static_cast<std::tuple<NetworkLayer*, std::string, const uint8_t*, size_t>*>(param);
+            auto* args = static_cast<std::tuple<NetworkLayer*, std::string, uint8_t*, size_t>*>(param);
             NetworkLayer* nl = std::get<0>(*args);
             std::string topic = std::get<1>(*args);
-            const uint8_t* data = std::get<2>(*args);
+            uint8_t* dataPtr = std::get<2>(*args);
             size_t len = std::get<3>(*args);
 
-            nl->deliverMessage(topic, data, len);
+            nl->deliverMessage(topic, dataPtr, len);
+
+            // Free the copied payload and the args tuple
+            delete[] dataPtr;
             delete args;
             vTaskDelete(nullptr);
         },
         "MsgDeliverTask",
         4096,
-        new std::tuple<NetworkLayer*, std::string, const uint8_t*, size_t>(this, topic, data, len),
+        new std::tuple<NetworkLayer*, std::string, uint8_t*, size_t>(this, topic, dataCopy, len),
         1,
         nullptr
     );
@@ -203,8 +219,17 @@ void NetworkLayer::deliverMessage(const std::string& topic, const uint8_t* data,
         // Create a copy of subscribers to avoid issues if callbacks modify subscriptions
         auto subscribersCopy = topicIt->second;
 
-        Serial.printf("[NetworkLayer] Delivering to %d subscribers of %s\n",
-                      subscribersCopy.size(), topic.c_str());
+        // Debug: Show what we're delivering
+        if (topic == "bluetooth/command") {
+            Serial.printf("[NetworkLayer] Delivering to %d subscribers of %s: ", subscribersCopy.size(), topic.c_str());
+            for (size_t i = 0; i < len && i < 10; i++) {
+                Serial.printf("%02X ", data[i]);
+            }
+            Serial.printf("(%d bytes)\n", len);
+        }
+
+        // Serial.printf("[NetworkLayer] Delivering to %d subscribers of %s\n",
+        //               subscribersCopy.size(), topic.c_str());
 
         // Release mutex before calling callbacks
         xSemaphoreGive(subscribersMutex_);

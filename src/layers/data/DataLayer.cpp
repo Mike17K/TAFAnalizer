@@ -88,9 +88,12 @@ bool DataLayer::set(const std::string& key, const std::vector<uint8_t>& value, u
 
     xSemaphoreGive(dataMutex_);
 
-    Serial.printf("[DataLayer] Set key '%s' with %d bytes%s\n",
-                  key.c_str(), value.size(),
-                  (ttlMs > 0) ? (", TTL: " + std::to_string(ttlMs) + "ms").c_str() : "");
+    // Don't log frequent MPU readings to avoid spam
+    if (key != "mpu/last_reading") {
+        Serial.printf("[DataLayer] Set key '%s' with %d bytes%s\n",
+                      key.c_str(), value.size(),
+                      (ttlMs > 0) ? (", TTL: " + std::to_string(ttlMs) + "ms").c_str() : "");
+    }
     return true;
 }
 
